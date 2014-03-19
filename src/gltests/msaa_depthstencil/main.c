@@ -221,7 +221,8 @@ int main( int argc , char* args[] )
         glEnable(GL_STENCIL_TEST);
         glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
 
-        for (uint i = 0; i < 512; i++)
+        uint i;
+        for (i = 0; i < 512; i++)
         {
             glStencilFunc(GL_ALWAYS, i & 0xFF, 0xFF);
 

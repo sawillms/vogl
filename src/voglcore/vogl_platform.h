@@ -83,7 +83,7 @@ inline FILE *vogl_fopen(const char *pFilename, const char *pMode)
 #define VOGL_BREAKPOINT DebugBreak();
 #define VOGL_BUILTIN_EXPECT(c, v) c
 #elif defined(__GNUC__)
-#define VOGL_BREAKPOINT asm("int $3");
+#define VOGL_BREAKPOINT __builtin_trap();
 #define VOGL_BUILTIN_EXPECT(c, v) __builtin_expect(c, v)
 #else
 #define VOGL_BREAKPOINT

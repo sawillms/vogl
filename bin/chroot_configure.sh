@@ -24,12 +24,26 @@ SCRIPTPATH=$(dirname "$SCRIPT")
 EXTBUILDDIR=$(readlink -f "${SCRIPTPATH}/../vogl_extbuild")
 mkdir -p ${EXTBUILDDIR}
 
+DO_MINIMAL=
 DO_PACKAGES=
 if [[ $EUID -eq 0 ]]; then
    DO_PACKAGES="_packages"
-elif [[ $# -eq 1 && "$1" == "--packages" ]]; then
-   DO_PACKAGES="_packages"
 fi
+for option in $@
+do
+   case $option in
+   "--minimal" )
+      DO_MINIMAL="true"
+      ;;
+   "--packages" )
+      DO_PACKAGES="_packages"
+      ;;
+   * )
+      echo "Invalid option: $option"
+      exit 1
+      ;;
+   esac
+done
 
 if [[ ! -v IN_CHROOT_CONFIGURE ]]; then
   # Launch ourselves with script so we can time this and get a log file
@@ -106,7 +120,9 @@ if [[ -n "$DO_PACKAGES" ]]; then
     #
     apt_get_install -y ubuntu-minimal
     apt_get_install --force-yes -y build-essential
-    apt_get_install --force-yes -y gcc-4.8 g++-4.8
+    if [ $DO_MINIMAL != "true" ]; then
+        apt_get_install --force-yes -y gcc-4.8 g++-4.8
+    fi
 
     #  Install the X11 package
     apt_get_install -y libx11-dev
@@ -251,9 +267,11 @@ sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.6 100
 sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.6 100
 sudo update-alternatives --install /usr/bin/cpp cpp-bin /usr/bin/cpp-4.6 100
 
-sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.8 50
-sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.8 50
-sudo update-alternatives --install /usr/bin/cpp cpp-bin /usr/bin/cpp-4.8 50
+if [ $DO_MINIMAL != "true" ]; then
+    sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.8 50
+    sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.8 50
+    sudo update-alternatives --install /usr/bin/cpp cpp-bin /usr/bin/cpp-4.8 50
+fi
 
 sudo update-alternatives --set gcc /usr/bin/gcc-4.6
 sudo update-alternatives --set g++ /usr/bin/g++-4.6
@@ -298,24 +316,26 @@ if [ ! -w "$DESTDIR/.libs/libturbojpeg.a" ]; then
 fi
 ( cd $DESTDIR && sudo make install )
 
-#  Install Qt
-REV=rev1
-DESTDIR=${BUILDDIR}/qt-everywhere-opensource-src-4.8.5_${REV}
-banner_spew "Building ${DESTDIR}..."
-[ $FORCE_REBUILD_ALL -eq 1 ] && rm -rf "$DESTDIR"
-if [ ! -w "$DESTDIR/lib/libQtCore.so" ]; then
-  # The official qt link fails with 'ERROR 403: Forbidden' occasionally so use Valve hosted file.
-  # [ ! -f ${BUILDDIR}/qt-everywhere-opensource-src-4.8.5.tar.gz ] && wget http://download.qt-project.org/official_releases/qt/4.8/4.8.5/qt-everywhere-opensource-src-4.8.5.tar.gz -O ${BUILDDIR}/qt-everywhere-opensource-src-4.8.5.tar.gz
-  [ ! -f ${BUILDDIR}/qt-everywhere-opensource-src-4.8.5.tar.gz ] && wget --no-check-certificate http://developer.valvesoftware.com/w/images/files/qt-everywhere-opensource-src-4.8.5.tar.gz -O ${BUILDDIR}/qt-everywhere-opensource-src-4.8.5.tar.gz
-
-  rm -rf "$DESTDIR"
-  mkdir -p "$DESTDIR" && tar -xvf ${BUILDDIR}/qt-everywhere-opensource-src-4.8.5.tar.gz --strip=1 -C $_
-  pushd $DESTDIR
-  echo yes | ./configure -opensource
-  make -j 8
-  popd
+if [ $DO_MINIMAL != "true" ]; then
+    #  Install Qt
+    REV=rev1
+    DESTDIR=${BUILDDIR}/qt-everywhere-opensource-src-4.8.5_${REV}
+    banner_spew "Building ${DESTDIR}..."
+    [ $FORCE_REBUILD_ALL -eq 1 ] && rm -rf "$DESTDIR"
+    if [ ! -w "$DESTDIR/lib/libQtCore.so" ]; then
+      # The official qt link fails with 'ERROR 403: Forbidden' occasionally so use Valve hosted file.
+      # [ ! -f ${BUILDDIR}/qt-everywhere-opensource-src-4.8.5.tar.gz ] && wget http://download.qt-project.org/official_releases/qt/4.8/4.8.5/qt-everywhere-opensource-src-4.8.5.tar.gz -O ${BUILDDIR}/qt-everywhere-opensource-src-4.8.5.tar.gz
+      [ ! -f ${BUILDDIR}/qt-everywhere-opensource-src-4.8.5.tar.gz ] && wget --no-check-certificate http://developer.valvesoftware.com/w/images/files/qt-everywhere-opensource-src-4.8.5.tar.gz -O ${BUILDDIR}/qt-everywhere-opensource-src-4.8.5.tar.gz
+    
+      rm -rf "$DESTDIR"
+      mkdir -p "$DESTDIR" && tar -xvf ${BUILDDIR}/qt-everywhere-opensource-src-4.8.5.tar.gz --strip=1 -C $_
+      pushd $DESTDIR
+      echo yes | ./configure -opensource
+      make -j 8
+      popd
+    fi
+    ( cd $DESTDIR && sudo make install )
 fi
-( cd $DESTDIR && sudo make install )
 
 # Install libunwind
 REV=rev1
@@ -354,39 +374,41 @@ fi
 sudo rm -rf /usr/local/bin/ninja
 sudo ln -s ${SCRIPTPATH}/ninja /usr/local/bin
 
-#  Install and build clang 3.4
-REV=rev1
-DESTDIR=$BUILDDIR/clang34_${REV}
-banner_spew "Building ${DESTDIR}..."
-[ $FORCE_REBUILD_ALL -eq 1 ] && rm -rf "$DESTDIR"
-if [ ! -w "$DESTDIR/build/bin/clang" ]; then
-  rm -rf "$DESTDIR"
-  mkdir -p "$DESTDIR/llvm-3.4" && tar -xvf ${EXTDIR}/clang34/llvm-3.4.src.tar.gz --strip=1 -C $_
-  mkdir -p "$DESTDIR/llvm-3.4/tools/clang" && tar -xvf ${EXTDIR}/clang34/clang-3.4.src.tar.gz --strip=1 -C $_
-  mkdir -p "$DESTDIR/llvm-3.4/tools/clang/tools/extra" && tar -xvf ${EXTDIR}/clang34/clang-tools-extra-3.4.src.tar.gz --strip=1 -C $_
-  mkdir -p "$DESTDIR/llvm-3.4/projects/compiler-rt" && tar -xvf ${EXTDIR}/clang34/compiler-rt-3.4.src.tar.gz --strip=1 -C $_
-  mkdir -p "$DESTDIR/build" && cd $_
-  pushd $DESTDIR/build
-  banner_run cmake -DCMAKE_BUILD_TYPE=Release -G Ninja $DESTDIR/llvm-3.4
-  banner_run ninja
-  popd
+if [ $DO_MINIMAL != "true" ]; then
+  #  Install and build clang 3.4
+  REV=rev1
+  DESTDIR=$BUILDDIR/clang34_${REV}
+  banner_spew "Building ${DESTDIR}..."
+  [ $FORCE_REBUILD_ALL -eq 1 ] && rm -rf "$DESTDIR"
+  if [ ! -w "$DESTDIR/build/bin/clang" ]; then
+    rm -rf "$DESTDIR"
+    mkdir -p "$DESTDIR/llvm-3.4" && tar -xvf ${EXTDIR}/clang34/llvm-3.4.src.tar.gz --strip=1 -C $_
+    mkdir -p "$DESTDIR/llvm-3.4/tools/clang" && tar -xvf ${EXTDIR}/clang34/clang-3.4.src.tar.gz --strip=1 -C $_
+    mkdir -p "$DESTDIR/llvm-3.4/tools/clang/tools/extra" && tar -xvf ${EXTDIR}/clang34/clang-tools-extra-3.4.src.tar.gz --strip=1 -C $_
+    mkdir -p "$DESTDIR/llvm-3.4/projects/compiler-rt" && tar -xvf ${EXTDIR}/clang34/compiler-rt-3.4.src.tar.gz --strip=1 -C $_
+    mkdir -p "$DESTDIR/build" && cd $_
+    pushd $DESTDIR/build
+    banner_run cmake -DCMAKE_BUILD_TYPE=Release -G Ninja $DESTDIR/llvm-3.4
+    banner_run ninja
+    popd
+  fi
+
+  #
+  # Set up our compiler links
+  #
+  banner_spew "Setting up clang compiler links..."
+  
+  # clang 3.4 links
+  sudo update-alternatives --install /usr/bin/gcc gcc $DESTDIR/build/bin/clang 50
+  sudo update-alternatives --install /usr/bin/g++ g++ $DESTDIR/build/bin/clang++ 50
+  #sudo update-alternatives --install /usr/bin/cpp cpp-bin /usr/bin/cpp-4.6 100
+  
+  #  Use CLANG 3.4 by default
+  echo "Setting [ $(gcc --version | head -n 1) ] to be the default compiler"
+  sudo update-alternatives --set gcc $DESTDIR/build/bin/clang
+  sudo update-alternatives --set g++ $DESTDIR/build/bin/clang++
+  sudo update-alternatives --set cpp-bin /usr/bin/cpp-4.6
 fi
-
-#
-# Set up our compiler links
-#
-banner_spew "Setting up clang compiler links..."
-
-# clang 3.4 links
-sudo update-alternatives --install /usr/bin/gcc gcc $DESTDIR/build/bin/clang 50
-sudo update-alternatives --install /usr/bin/g++ g++ $DESTDIR/build/bin/clang++ 50
-#sudo update-alternatives --install /usr/bin/cpp cpp-bin /usr/bin/cpp-4.6 100
-
-#  Use CLANG 3.4 by default
-echo "Setting [ $(gcc --version | head -n 1) ] to be the default compiler"
-sudo update-alternatives --set gcc $DESTDIR/build/bin/clang
-sudo update-alternatives --set g++ $DESTDIR/build/bin/clang++
-sudo update-alternatives --set cpp-bin /usr/bin/cpp-4.8
 
 # Update dynamic link bindings.
 sudo ldconfig

@@ -154,7 +154,7 @@ void vogl_debug_break_if_debugging(void)
 
     if (g_debugger_present == 1)
     {
-        __asm__("int3");
+        __builtin_trap();
     }
 }
 

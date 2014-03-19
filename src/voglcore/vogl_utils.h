@@ -1117,7 +1117,10 @@ namespace vogl
 
         inline uint64_t get_rdtsc()
         {
-#if defined(__GNUC__)
+#if defined(__arm__)
+            VOGL_ASSERT(0);
+            return 0;
+#elif defined(__GNUC__)
             unsigned int hi, lo;
             __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi));
             return ((uint64_t)hi << 32) | lo;

@@ -10,6 +10,7 @@
 #
 cmake_minimum_required(VERSION 2.8)
 
+option(BUILD_ARM "build for ARM" FALSE)
 option(BUILD_X64 "build 64-bit" FALSE)
 option(CMAKE_VERBOSE "Verbose CMake" FALSE)
 if( CMAKE_VERBOSE )
@@ -111,7 +112,7 @@ if ("${CMAKE_C_COMPILER_ID}" STREQUAL "Clang")
   endif()
 endif()
 
-if (NOT BUILD_X64)
+if (NOT BUILD_X64 AND NOT BUILD_ARM)
     set(CMAKE_CXX_FLAGS_LIST "${CMAKE_CXX_FLAGS_LIST} -m32")
 endif()
 
@@ -146,9 +147,15 @@ endfunction()
 ### TODO: see if sse is generated with these instructions and clang:
 ## -march=corei7 -msse -mfpmath=sse
 
-set(MARCH_STR "-march=corei7")
+#TODO: extend for armv8
+if (BUILD_ARM)
+   set(MARCH_STR "-march=armv7")
+else()
+   set(MARCH_STR "-march=corei7")
+endif()
+
 if ("${CMAKE_C_COMPILER_ID}" STREQUAL "Clang")
-   if ( NOT BUILD_X64 )
+   if ( NOT BUILD_X64 AND NOT BUILD_ARM)
       # Fix startup crash in dlopen_notify_callback (called indirectly from our dlopen() function) when tracing glxspheres on my AMD dev box (x86 release only)
       # Also fixes tracing Q3 Arena using release tracer
       # Clang is generating sse2 code even when it shouldn't be:
@@ -272,6 +279,7 @@ function(build_options_finalize)
     if( CMAKE_VERBOSE )
         message("  CMAKE_PROJECT_NAME: ${CMAKE_PROJECT_NAME}")
         message("  PROJECT_NAME: ${PROJECT_NAME}")
+        message("  BUILD_ARM: ${BUILD_ARM}")
         message("  BUILD_X64: ${BUILD_X64}")
         message("  BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
         message("  PROJECT_BINARY_DIR: ${PROJECT_BINARY_DIR}")

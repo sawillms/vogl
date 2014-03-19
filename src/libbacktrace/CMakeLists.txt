@@ -63,7 +63,12 @@ endif ()
 
 # Add these compiler options to match how voglcore and voglcommon are compiled, and to get libbacktrace compiling with gcc.
 # -fno-strict-aliasing is particularly important if voglcore is called, and -fvisibility=hidden must be used otherwide symbols from this lib could be made visible in libvogltrace.
-add_definitions ("-g -fno-omit-frame-pointer -mtune=corei7 -fno-strict-aliasing -fno-math-errno -fvisibility=hidden")
+if ( BUILD_ARM )
+    add_definitions ("-g -fno-omit-frame-pointer -march=armv7-a -fno-strict-aliasing -fno-math-errno -fvisibility=hidden")
+else()
+    add_definitions ("-g -fno-omit-frame-pointer -mtune=corei7 -fno-strict-aliasing -fno-math-errno -fvisibility=hidden")
+endif()
+
 SET(CMAKE_CXX_FLAGS_RELEASE "-O2 -g -DNDEBUG")
 
 if ("${CMAKE_C_COMPILER_ID}" STREQUAL "Clang")
@@ -101,7 +106,10 @@ else ()
     set (FORMAT_FILE unknown.c)
     set (BACKTRACE_SUPPORTED 0)
 endif ()
-
+if (BUILD_ARM)
+    set (FORMAT_FILE elf.c dwarf.c)
+    math (EXPR BACKTRACE_ELF_SIZE 8*${CMAKE_C_SIZEOF_DATA_PTR})
+endif ()
 check_symbol_exists (mmap sys/mman.h HAVE_MMAP)
 
 if (HAVE_MMAP)
@@ -157,6 +165,7 @@ include_directories (BEFORE
 include_directories (
     auxincl
     ${SRC_DIR}/voglcore
+    ${SRC_DIR}/voglcore/auxincl
     ${LIBUNWIND_INCLUDE_DIR}
 )
 add_library (backtrace STATIC EXCLUDE_FROM_ALL
@@ -172,6 +181,11 @@ add_library (backtrace STATIC EXCLUDE_FROM_ALL
     # mikesart added
     btrace.cpp
     libelftc_dem_gnu3.c
+#seth: temporary hack for ARM port
+    elf.c
+    dwarf.c
+    ${LIBUNWIND_INCLUDE_DIR}/dwarf.h
+    auxincl/dwarf2.h
 )
 target_link_libraries(backtrace voglcore)
 

@@ -23,6 +23,7 @@
  *
  **************************************************************************/
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -34,17 +35,22 @@
 #include <string>
 
 #define F_VERBOSE         0x00000001
+// these arch flags are used in index calculations below, so must be contiguous
+#define F_ARCH_MASK       0x0000000E
+#define F_FIRST_ARCH      0x00000002
 #define F_I386            0x00000002
 #define F_AMD64           0x00000004
-#define F_USEMAKE         0x00000008
-#define F_CLEAN           0x00000010
-#define F_RELEASE         0x00000020
-#define F_DEBUG           0x00000040
-#define F_CLANG33         0x00000100
-#define F_CLANG34         0x00000200
-#define F_GCC48           0x00000400
-#define F_GCC             0x00000800
-#define F_CLEANONLY       0x00001000
+#define F_ARMV7L          0x00000008
+// end of arch flags
+#define F_USEMAKE         0x00000010
+#define F_CLEAN           0x00000020
+#define F_RELEASE         0x00000040
+#define F_DEBUG           0x00000100
+#define F_CLANG33         0x00000200
+#define F_CLANG34         0x00000400
+#define F_GCC48           0x00000800
+#define F_GCC             0x00001000
+#define F_CLEANONLY       0x00002000
 
 static bool g_dryrun = false;
 
@@ -85,6 +91,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
         break;
     case 'v': arguments->flags |= F_VERBOSE; break;
     case '3': arguments->flags |= F_I386; break;
+    case 'a': arguments->flags |= F_ARMV7L; break;
     case '6': arguments->flags |= F_AMD64; break;
     case 'm': arguments->flags |= F_USEMAKE; break;
     case 'c': arguments->flags |= F_CLEAN; break;
@@ -133,6 +140,7 @@ int main(int argc, char *argv[])
     {
         { "i386",                       '3', 0, 0, "Build 32-bit", 0 },
         { "amd64",                      '6', 0, 0, "Build 64-bit.", 0 },
+        { "armv7l",                     'a', 0, 0, "Build armv7l hardfp.", 0 },
 
         { "release",                    'r', 0, 0, "Build release (default).", 1 },
         { "debug",                      'd', 0, 0, "Build debug.", 1 },
@@ -197,14 +205,18 @@ int main(int argc, char *argv[])
         struct utsname uts;
         if(uname(&uts))
             errorf("ERROR: uname failed.\n");
-        unsigned int plat_flag = !strcmp(uts.machine, "x86_64") ? F_AMD64 : F_I386;
-        args.flags |= plat_flag;
-        if ((args.flags & (F_AMD64 | F_I386)) != plat_flag)
+
+        unsigned int plat_flag = 0;
+        if (!strcmp(uts.machine, "x86_64")) plat_flag = F_AMD64;
+        if (!strcmp(uts.machine, "armv7l")) plat_flag = F_ARMV7L;
+        if (!strcmp(uts.machine, "i386")) plat_flag = F_I386;
+ 
+        if ((args.flags & (F_AMD64 | F_I386 | F_ARMV7L)) != plat_flag)
             errorf("ERROR: Can't build this arch in this %s chroot.\n", uts.machine);
     }
 
-    if (!(args.flags & (F_I386 | F_AMD64)))
-        errorf("ERROR: Need to specify --i386 or --amd64\n");
+    if (!(args.flags & (F_I386 | F_AMD64 | F_ARMV7L)))
+        errorf("ERROR: Need to specify one of: --i386, --amd64, --armv7l\n");
 
     // Default to release if not set.
     if (!(args.flags & (F_RELEASE | F_DEBUG)))
@@ -219,22 +231,32 @@ int main(int argc, char *argv[])
     args.defs += vogl_proj_dir;
     args.defs += "/src";
 
-    unsigned int platform = args.flags & (F_I386 | F_AMD64);
+    unsigned int platform = args.flags & F_ARCH_MASK;
+    unsigned int plattest = F_FIRST_ARCH;
     while (platform)
     {
-        static const char *libarch[] = { "i386", "x86_64" };
+        static const char *libarch[] = { "i386", "x86_64", "armv7l" };
         static const char *suffix[] = { "32", "64" };
         static const char *dirname = "bin";
-        static const char *schroot_name[] = { "vogl_precise_i386", "vogl_precise_amd64" };
-        static const char *deflibarch[] = { " -DCMAKE_LIBRARY_ARCHITECTURE=i386-linux-gnu", " -DCMAKE_LIBRARY_ARCHITECTURE=x86_64-linux-gnu" };
-        int platind = !(platform & F_I386);
+        static const char *schroot_name[] = { "vogl_precise_i386", "vogl_precise_amd64", "vogl_precise_arm" };
+        static const char *deflibarch[] = { " -DCMAKE_LIBRARY_ARCHITECTURE=i386-linux-gnu", " -DCMAKE_LIBRARY_ARCHITECTURE=x86_64-linux-gnu", " -DCMAKE_LIBRARY_ARCHITECTURE=arm-linux-gnueabihf" };
+
+        if (!platform) break;
+        unsigned int platind;
+        if (platform & plattest) {
+            platind = log2(plattest) - 1;
+            plattest <<= 1; 
+        } else {
+            plattest <<= 1;
+            continue;
+        }
 
         platform &= (platform - 1);
 
         unsigned int flavor = args.flags & (F_RELEASE | F_DEBUG);
         while (flavor)
         {
-            static const char *name[] = { "Release32", "Debug32", "Release64", "Debug64" };
+            static const char *name[] = { "Release32", "Debug32", "Release64", "Debug64", "Release_armv7l", "Debug_armv7l" };
             static const char *build_type[] = { " -DCMAKE_BUILD_TYPE=Release", " -DCMAKE_BUILD_TYPE=Debug" };
             int flavind = !(flavor & F_RELEASE);
 

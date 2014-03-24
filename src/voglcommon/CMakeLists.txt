@@ -64,6 +64,10 @@ if (CMAKE_COMPILER_IS_GNUCC)
 #  gcc 4.6 and gcc 4.8.
 # See this bug: http://gcc.gnu.org/bugzilla/show_bug.cgi?id=59868
 set_source_files_properties(vogl_entrypoints.cpp PROPERTIES COMPILE_FLAGS -fno-var-tracking)
+     # seth: gcc4.6 on armhf go stupid with release optimizations, investigate
+     if (BUILD_ARM)
+         set_source_files_properties(vogl_entrypoints.cpp PROPERTIES COMPILE_FLAGS -O0)
+     endif()
 endif()
 
 add_compiler_flag("-fPIC")

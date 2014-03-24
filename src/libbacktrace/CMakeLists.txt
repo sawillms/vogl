@@ -158,6 +158,7 @@ configure_file (backtrace-supported.h.in backtrace-supported.h)
 configure_file (config.h.in.cmake config.h)
 
 find_path(LIBUNWIND_INCLUDE_DIR libunwind.h)
+find_path(DWARF_INCLUDE_DIR dwarf.h)
 
 include_directories (BEFORE
     ${CMAKE_CURRENT_BINARY_DIR}
@@ -184,7 +185,7 @@ add_library (backtrace STATIC EXCLUDE_FROM_ALL
 #seth: temporary hack for ARM port
     elf.c
     dwarf.c
-    ${LIBUNWIND_INCLUDE_DIR}/dwarf.h
+    ${DWARF_INCLUDE_DIR}/dwarf.h
     auxincl/dwarf2.h
 )
 target_link_libraries(backtrace voglcore)

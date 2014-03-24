@@ -46,7 +46,7 @@ build_chroot()
       pkg="armhf"
       personality="linux"
       mirror=""
-      chroot_configure_opt="--minimal"
+      chroot_configure_opt="--arm"
       ;;
     * )
       echo "Error: Unrecognized argument: $1"
@@ -84,7 +84,7 @@ build_chroot()
   # Make sure that vogl_extbuild exists so schroot_configure.sh doesn't create it as root.
   mkdir -p "${SCRIPTPATH}/../vogl_extbuild"
 
-  echo -e "\n${Color_On}Running chroot_configure.sh --packages...${Color_Off}" 
+  echo -e "\n${Color_On}Running chroot_configure.sh --packages...${Color_Off}"
   schroot --chroot ${CHROOT_NAME} -d ${SCRIPTPATH} --user root -- ./chroot_configure.sh --packages ${chroot_configure_opt}
 
   echo -e "\n${Color_On}Allow sudo to run in chroot without prompting for password...${Color_Off}" 

@@ -13,6 +13,7 @@ message("  -DVOGLTEST_LOAD_LIBVOGLTRACE=[On|Off]: glitest will load libvogltrace
 message("  -DVOGLTRACE_NO_PUBLIC_EXPORTS=[On|Off]: Don't define any public GL exports in libvogltrace.so.")
 message("  -DVOGL_ENABLE_ASSERTS=[On|Off]: Enable assertions in all voglcore builds (including release).")
 message("  -DCMAKE_VERBOSE=[On|Off]: Spew cmake project options.")
+message("  -DBUILD_ARM=[On|Off]: Build for armfp.")
 message("  -DBUILD_X64=[On|Off]: Build 32 or 64-bit.")
 message("  -DCLANG_ANALYZE=[On|Off]: Do clang analyze build (will not link).")
 message("  -DCLANG_EVERYTHING=[On|Off]: Do clang build with -Weverything.")

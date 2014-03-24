@@ -138,9 +138,9 @@ int main(int argc, char *argv[])
 {
     static struct argp_option options[] =
     {
-        { "i386",                       '3', 0, 0, "Build 32-bit", 0 },
-        { "amd64",                      '6', 0, 0, "Build 64-bit.", 0 },
-        { "armv7l",                     'a', 0, 0, "Build armv7l hardfp.", 0 },
+        { "i386",                       '3', 0, 0, "Build for 32-bit x86.", 0 },
+        { "amd64",                      '6', 0, 0, "Build for 64-bit x86.", 0 },
+        { "armhf",                      'a', 0, 0, "Build for 32-bit ARM little-endian hardfp.", 0 },
 
         { "release",                    'r', 0, 0, "Build release (default).", 1 },
         { "debug",                      'd', 0, 0, "Build debug.", 1 },
@@ -198,6 +198,9 @@ int main(int argc, char *argv[])
     // Parse args.
     argp_parse(&argp, argc, argv, ARGP_NO_HELP, 0, &args);
 
+    if (!(args.flags & F_ARCH_MASK))
+        errorf("ERROR: Need to specify one of: --i386, --amd64, --armhf\n");
+
     // Check if we are running under a chroot.
     const char *schroot_user = getenv("SCHROOT_USER");
     if (schroot_user)
@@ -211,12 +214,9 @@ int main(int argc, char *argv[])
         if (!strcmp(uts.machine, "armv7l")) plat_flag = F_ARMV7L;
         if (!strcmp(uts.machine, "i386")) plat_flag = F_I386;
  
-        if ((args.flags & (F_AMD64 | F_I386 | F_ARMV7L)) != plat_flag)
+        if ((args.flags & F_ARCH_MASK) != plat_flag)
             errorf("ERROR: Can't build this arch in this %s chroot.\n", uts.machine);
     }
-
-    if (!(args.flags & (F_I386 | F_AMD64 | F_ARMV7L)))
-        errorf("ERROR: Need to specify one of: --i386, --amd64, --armv7l\n");
 
     // Default to release if not set.
     if (!(args.flags & (F_RELEASE | F_DEBUG)))
@@ -238,7 +238,7 @@ int main(int argc, char *argv[])
         static const char *libarch[] = { "i386", "x86_64", "armv7l" };
         static const char *suffix[] = { "32", "64" };
         static const char *dirname = "bin";
-        static const char *schroot_name[] = { "vogl_precise_i386", "vogl_precise_amd64", "vogl_precise_arm" };
+        static const char *schroot_name[] = { "vogl_precise_i386", "vogl_precise_amd64", "vogl_precise_armhf" };
         static const char *deflibarch[] = { " -DCMAKE_LIBRARY_ARCHITECTURE=i386-linux-gnu", " -DCMAKE_LIBRARY_ARCHITECTURE=x86_64-linux-gnu", " -DCMAKE_LIBRARY_ARCHITECTURE=arm-linux-gnueabihf" };
 
         if (!platform) break;
@@ -271,6 +271,12 @@ int main(int argc, char *argv[])
             // We need to add this for Ninja builds in the chroots. (Bug in cmake+Ninja)
             if (!(args.flags & F_USEMAKE))
                 defines += deflibarch[platind];
+
+            if (args.flags & F_ARMV7L) {
+                defines += " -DBUILD_ARM=On";
+                // seth: glXGetProcAddressXXX is not found by cmake for a yet-to-be-investigated reason
+                defines += " -DBUILD_GL_SAMPLES=Off";
+            }
 
             printf("\033[0;93m %s\033[0m\n", defines.c_str());
 

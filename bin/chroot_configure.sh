@@ -24,16 +24,20 @@ SCRIPTPATH=$(dirname "$SCRIPT")
 EXTBUILDDIR=$(readlink -f "${SCRIPTPATH}/../vogl_extbuild")
 mkdir -p ${EXTBUILDDIR}
 
-DO_MINIMAL=
+DO_ARM=false
 DO_PACKAGES=
+FORCE_REBUILD_ALL=0
 if [[ $EUID -eq 0 ]]; then
    DO_PACKAGES="_packages"
 fi
 for option in $@
 do
    case $option in
-   "--minimal" )
-      DO_MINIMAL="true"
+   "-f" )
+      FORCE_REBUILD_ALL=1
+      ;;
+   "--arm" )
+      DO_ARM="true"
       ;;
    "--packages" )
       DO_PACKAGES="_packages"
@@ -46,9 +50,17 @@ do
 done
 
 if [[ ! -v IN_CHROOT_CONFIGURE ]]; then
-  # Launch ourselves with script so we can time this and get a log file
   export IN_CHROOT_CONFIGURE=1
-  script --return --command "time $SCRIPT $@" ${EXTBUILDDIR}/chroot_configure${DO_PACKAGES}.$(uname -i).log
+
+  # Launch ourselves with script so we can time this and get a log file
+  if [[ -n "$DO_PACKAGES" ]]; then
+    # don't rely on time being installed prior to package installation
+    COMMAND="$SCRIPT $@"
+    script ${EXTBUILDDIR}/chroot_configure${DO_PACKAGES}.$(uname -i).log --return --command "${COMMAND}" 
+  else
+    COMMAND="time $SCRIPT $@"
+    script ${EXTBUILDDIR}/chroot_configure${DO_PACKAGES}.$(uname -i).log --return --command "${COMMAND}"
+  fi
   exit $?
 fi
 
@@ -98,13 +110,17 @@ if [[ -n "$DO_PACKAGES" ]]; then
     export DEBIAN_FRONTEND=noninteractive
 
     # add the universe repo & some source pointers
-    echo "deb http://archive.ubuntu.com/ubuntu precise main" > /etc/apt/sources.list
-    echo "deb-src http://extras.ubuntu.com/ubuntu precise main" >> /etc/apt/sources.list
-    echo "deb http://us.archive.ubuntu.com/ubuntu/ precise universe" >> /etc/apt/sources.list
-    echo "deb-src http://us.archive.ubuntu.com/ubuntu/ precise universe" >> /etc/apt/sources.list
+    if [ $DO_ARM == "true" ]; then
+      echo "deb http://ports.ubuntu.com/ubuntu-ports precise main universe" > /etc/apt/sources.list
+    else
+      echo "deb http://archive.ubuntu.com/ubuntu precise main" > /etc/apt/sources.list
+      echo "deb-src http://extras.ubuntu.com/ubuntu precise main" >> /etc/apt/sources.list
+      echo "deb http://us.archive.ubuntu.com/ubuntu/ precise universe" >> /etc/apt/sources.list
+      echo "deb-src http://us.archive.ubuntu.com/ubuntu/ precise universe" >> /etc/apt/sources.list
 
-    echo "deb http://ppa.launchpad.net/ubuntu-toolchain-r/test/ubuntu precise main" > /etc/apt/sources.list.d/gcc_toolchain.list
-    echo "deb-src http://ppa.launchpad.net/ubuntu-toolchain-r/test/ubuntu precise main" >> /etc/apt/sources.list.d/gcc_toolchain.list
+      echo "deb http://ppa.launchpad.net/ubuntu-toolchain-r/test/ubuntu precise main" > /etc/apt/sources.list.d/gcc_toolchain.list
+      echo "deb-src http://ppa.launchpad.net/ubuntu-toolchain-r/test/ubuntu precise main" >> /etc/apt/sources.list.d/gcc_toolchain.list
+    fi
 
     #
     #  http://www.pressingquestion.com/11145310/Badsig-Errors
@@ -120,8 +136,10 @@ if [[ -n "$DO_PACKAGES" ]]; then
     #
     apt_get_install -y ubuntu-minimal
     apt_get_install --force-yes -y build-essential
-    if [ $DO_MINIMAL != "true" ]; then
-        apt_get_install --force-yes -y gcc-4.8 g++-4.8
+    if [ $DO_ARM == "true" ]; then
+      apt_get_install --force-yes -y gcc-4.6 g++-4.6
+    else
+      apt_get_install --force-yes -y gcc-4.8 g++-4.8
     fi
 
     #  Install the X11 package
@@ -188,30 +206,6 @@ if [[ -n "$DO_PACKAGES" ]]; then
     exit 0
 fi
 
-FORCE_REBUILD_ALL=0
-
-#echo "OPTIND starts at $OPTIND"
-while getopts "f" optname
- 	do
-		case "$optname" in
-        "f")
-            # echo "Force rebuild of all packages"
-            FORCE_REBUILD_ALL=1
-            ;;
-		"?")
-			#echo "Unknown option $OPTARG"
-			;;
-	 	":")
-			#echo "No argument value for option $OPTARG"
-			;;
-		*)
-	 		# Should not occur
-			echo "Unknown error while processing options"
-		;;
-		esac
-		# echo "OPTIND is now $OPTIND"
-	done
-
 # http://stackoverflow.com/questions/64786/error-handling-in-bash
 function cleanup()
 {
@@ -267,7 +261,7 @@ sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.6 100
 sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.6 100
 sudo update-alternatives --install /usr/bin/cpp cpp-bin /usr/bin/cpp-4.6 100
 
-if [ $DO_MINIMAL != "true" ]; then
+if [ $DO_ARM != "true" ]; then
     sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.8 50
     sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.8 50
     sudo update-alternatives --install /usr/bin/cpp cpp-bin /usr/bin/cpp-4.8 50
@@ -316,26 +310,28 @@ if [ ! -w "$DESTDIR/.libs/libturbojpeg.a" ]; then
 fi
 ( cd $DESTDIR && sudo make install )
 
-if [ $DO_MINIMAL != "true" ]; then
-    #  Install Qt
-    REV=rev1
-    DESTDIR=${BUILDDIR}/qt-everywhere-opensource-src-4.8.5_${REV}
-    banner_spew "Building ${DESTDIR}..."
-    [ $FORCE_REBUILD_ALL -eq 1 ] && rm -rf "$DESTDIR"
-    if [ ! -w "$DESTDIR/lib/libQtCore.so" ]; then
-      # The official qt link fails with 'ERROR 403: Forbidden' occasionally so use Valve hosted file.
-      # [ ! -f ${BUILDDIR}/qt-everywhere-opensource-src-4.8.5.tar.gz ] && wget http://download.qt-project.org/official_releases/qt/4.8/4.8.5/qt-everywhere-opensource-src-4.8.5.tar.gz -O ${BUILDDIR}/qt-everywhere-opensource-src-4.8.5.tar.gz
-      [ ! -f ${BUILDDIR}/qt-everywhere-opensource-src-4.8.5.tar.gz ] && wget --no-check-certificate http://developer.valvesoftware.com/w/images/files/qt-everywhere-opensource-src-4.8.5.tar.gz -O ${BUILDDIR}/qt-everywhere-opensource-src-4.8.5.tar.gz
-    
-      rm -rf "$DESTDIR"
-      mkdir -p "$DESTDIR" && tar -xvf ${BUILDDIR}/qt-everywhere-opensource-src-4.8.5.tar.gz --strip=1 -C $_
-      pushd $DESTDIR
-      echo yes | ./configure -opensource
-      make -j 8
-      popd
-    fi
-    ( cd $DESTDIR && sudo make install )
+#  Install Qt
+REV=rev1
+DESTDIR=${BUILDDIR}/qt-everywhere-opensource-src-4.8.5_${REV}
+banner_spew "Building ${DESTDIR}..."
+[ $FORCE_REBUILD_ALL -eq 1 ] && rm -rf "$DESTDIR"
+if [ ! -w "$DESTDIR/lib/libQtCore.so" ]; then
+  # The official qt link fails with 'ERROR 403: Forbidden' occasionally so use Valve hosted file.
+  # [ ! -f ${BUILDDIR}/qt-everywhere-opensource-src-4.8.5.tar.gz ] && wget http://download.qt-project.org/official_releases/qt/4.8/4.8.5/qt-everywhere-opensource-src-4.8.5.tar.gz -O ${BUILDDIR}/qt-everywhere-opensource-src-4.8.5.tar.gz
+  [ ! -f ${BUILDDIR}/qt-everywhere-opensource-src-4.8.5.tar.gz ] && wget --no-check-certificate http://developer.valvesoftware.com/w/images/files/qt-everywhere-opensource-src-4.8.5.tar.gz -O ${BUILDDIR}/qt-everywhere-opensource-src-4.8.5.tar.gz
+
+  rm -rf "$DESTDIR"
+  mkdir -p "$DESTDIR" && tar -xvf ${BUILDDIR}/qt-everywhere-opensource-src-4.8.5.tar.gz --strip=1 -C $_
+  pushd $DESTDIR
+  if [ $DO_ARM == "true" ]; then
+    echo yes | ./configure -opensource -no-pch
+  else
+    echo yes | ./configure -opensource
+  fi
+  make -j 8
+  popd
 fi
+( cd $DESTDIR && sudo make install )
 
 # Install libunwind
 REV=rev1
@@ -374,7 +370,7 @@ fi
 sudo rm -rf /usr/local/bin/ninja
 sudo ln -s ${SCRIPTPATH}/ninja /usr/local/bin
 
-if [ $DO_MINIMAL != "true" ]; then
+if [ $DO_ARM != "true" ]; then
   #  Install and build clang 3.4
   REV=rev1
   DESTDIR=$BUILDDIR/clang34_${REV}
